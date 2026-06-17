@@ -586,7 +586,7 @@ function WinnerRing({ pct }: { pct: number }) {
   const animatedPct = useCountUp(pct, 2000);
   const offset = c - (animatedPct / 100) * c;
   return (
-    <div className="relative grid h-56 w-56 max-w-[72vw] place-items-center sm:h-72 sm:w-72 sm:max-w-none">
+    <div className="relative grid aspect-square w-56 max-w-[72vw] place-items-center sm:w-72 sm:max-w-none">
       <svg className="absolute inset-0 -rotate-90" viewBox="0 0 260 260">
         <defs>
           <linearGradient id="goldGrad" x1="0" x2="1" y1="0" y2="1">
@@ -996,6 +996,44 @@ function Index() {
   const safeIndex = Math.min(catIndex, Math.max(0, CATEGORIES.length - 1));
   const category = CATEGORIES[safeIndex];
 
+  const nextCategory = () => {
+    if (catIndex + 1 >= CATEGORIES.length) {
+      setFinale(true);
+      return;
+    }
+    setCatIndex((i) => i + 1);
+    setStage("category");
+  };
+
+  const goWelcome = () => {
+    setFinale(false);
+    setCatIndex(0);
+    setStage("welcome");
+  };
+
+  // Keyboard nav (Space / Enter to advance). These hooks must run on every
+  // render regardless of loading/error/empty state below — React requires
+  // the same hooks in the same order every time, or it throws (error #310).
+  const handlerRef = useRef<() => void>(() => {});
+  handlerRef.current = () => {
+    if (loading || error || !category || finale) return;
+    if (stage === "welcome") setStage("category");
+    else if (stage === "category") setStage("nominees");
+    else if (stage === "nominees") setStage("reveal");
+    else if (stage === "winner") setStage("breakdown");
+    else if (stage === "breakdown") nextCategory();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space" || e.code === "Enter" || e.code === "ArrowRight") {
+        e.preventDefault();
+        handlerRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (loading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={error} />;
 
@@ -1023,42 +1061,6 @@ function Index() {
       </div>
     );
   }
-
-  const goWelcome = () => {
-    setFinale(false);
-    setCatIndex(0);
-    setStage("welcome");
-  };
-
-  const nextCategory = () => {
-    if (catIndex + 1 >= CATEGORIES.length) {
-      setFinale(true);
-      return;
-    }
-    setCatIndex((i) => i + 1);
-    setStage("category");
-  };
-
-  // Keyboard nav (Space / Enter to advance)
-  const handlerRef = useRef<() => void>(() => {});
-  handlerRef.current = () => {
-    if (finale) return;
-    if (stage === "welcome") setStage("category");
-    else if (stage === "category") setStage("nominees");
-    else if (stage === "nominees") setStage("reveal");
-    else if (stage === "winner") setStage("breakdown");
-    else if (stage === "breakdown") nextCategory();
-  };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code === "Space" || e.code === "Enter" || e.code === "ArrowRight") {
-        e.preventDefault();
-        handlerRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   if (finale) return <FinaleScreen onRestart={goWelcome} />;
 
