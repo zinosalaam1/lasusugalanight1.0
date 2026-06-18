@@ -314,8 +314,7 @@ function Dashboard({ userEmail }: { userEmail: string }) {
         )}
 
         <p className="pt-4 text-center text-[11px] uppercase tracking-[0.3em] text-white/30">
-          Tip · The reveal screen hides nominee positions until each elimination,
-          so the audience can't guess the winner from the layout.
+        POWERED WITH LOVE AND GREATER THINGS ❤️ ZINOLN
         </p>
       </div>
     </div>
