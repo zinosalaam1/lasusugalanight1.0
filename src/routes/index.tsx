@@ -297,6 +297,7 @@ function NomineeCard({
   rank,
   state,
   showVotes,
+  maskName = false,
   totalVotes,
   delay = 0,
 }: {
@@ -304,6 +305,7 @@ function NomineeCard({
   rank?: number;
   state: "idle" | "eliminating" | "eliminated" | "winner" | "runnerup";
   showVotes: boolean;
+  maskName?: boolean;
   totalVotes: number;
   delay?: number;
 }) {
@@ -315,6 +317,13 @@ function NomineeCard({
   const isElim = state === "eliminating";
   const isWin = state === "winner";
   const isRunner = state === "runnerup";
+
+  // Build a placeholder of the same shape as the name so the card layout
+  // doesn't jump when the real name appears (e.g. "Jane Doe" -> "??? ???").
+  const maskedName = useMemo(
+    () => nominee.name.split(" ").map((w) => "?".repeat(w.length)).join(" "),
+    [nominee.name],
+  );
 
   return (
     <div
@@ -348,14 +357,19 @@ function NomineeCard({
             border: "1px solid rgba(255,215,0,0.35)",
           }}
         >
-          {nominee.initials}
+          {maskName ? "?" : nominee.initials}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-display text-xl font-semibold text-white">
-            {nominee.name}
+          <div
+            className={[
+              "truncate font-display text-xl font-semibold transition-all duration-300",
+              maskName ? "italic text-white/30" : "text-white",
+            ].join(" ")}
+          >
+            {maskName ? maskedName : nominee.name}
           </div>
           <div className="text-[11px] uppercase tracking-[0.25em] text-white/40">
-            {nominee.house || "\u00A0"}
+            {maskName ? "\u00A0" : nominee.house || "\u00A0"}
           </div>
         </div>
       </div>
@@ -563,6 +577,7 @@ function RevealScreen({
                 rank={showRank ? ordered.length - orderedIdx : undefined}
                 state={state}
                 showVotes={isElim || isCurrent}
+                maskName={!(isElim || isCurrent)}
                 totalVotes={category.totalVotes}
               />
             );
