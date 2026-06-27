@@ -8,6 +8,71 @@ import {
   useCategories,
 } from "@/lib/awards-store";
 
+/* ============================================================
+   Fullscreen + idle-cursor hooks (for projector use)
+   ============================================================ */
+
+/** Tracks whether the page is currently in real browser Fullscreen mode
+ * and exposes a toggle. The Fullscreen API requires a direct user gesture
+ * to enter — it can't be triggered automatically on page load. */
+function useFullscreen() {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    onChange();
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const enter = async () => {
+    try {
+      await document.documentElement.requestFullscreen();
+    } catch {
+      // Some browsers/contexts (e.g. iOS Safari) don't support the
+      // Fullscreen API at all — fail silently, the page still works,
+      // just without the OS-level fullscreen chrome removed.
+    }
+  };
+
+  const exit = async () => {
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  return { isFullscreen, enter, exit };
+}
+
+/** Hides the CSS cursor after a few seconds of no mouse movement, so a
+ * projected screen doesn't show an idle pointer sitting in the frame. */
+function useIdleCursor(timeoutMs = 3000) {
+  const [idle, setIdle] = useState(false);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const reset = () => {
+      setIdle(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => setIdle(true), timeoutMs);
+    };
+    reset();
+    window.addEventListener("mousemove", reset);
+    window.addEventListener("keydown", reset);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("mousemove", reset);
+      window.removeEventListener("keydown", reset);
+    };
+  }, [timeoutMs]);
+
+  return idle;
+}
+
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
@@ -174,6 +239,7 @@ function WelcomeScreen({
   categories: Category[];
 }) {
   const CATEGORIES = categories;
+  const { isFullscreen, enter, exit } = useFullscreen();
   return (
     <div className="stage-bg vignette relative flex min-h-screen flex-col items-center justify-center px-4 py-12 text-center sm:px-6">
       <Particles />
@@ -213,12 +279,29 @@ function WelcomeScreen({
 
         <GoldDivider className="my-2" />
 
-        <button
-          onClick={onBegin}
-          className="btn-gold group relative overflow-hidden rounded-full px-8 py-4 text-xs uppercase tracking-[0.3em] sm:px-12 sm:text-sm"
-        >
-          <span className="relative z-10">Tap to Begin Ceremony</span>
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={onBegin}
+            className="btn-gold group relative overflow-hidden rounded-full px-8 py-4 text-xs uppercase tracking-[0.3em] sm:px-12 sm:text-sm"
+          >
+            <span className="relative z-10">Tap to Begin Ceremony</span>
+          </button>
+
+          <button
+            onClick={() => (isFullscreen ? exit() : enter())}
+            className="flex items-center gap-2 rounded-full border border-white/15 px-6 py-4 text-xs uppercase tracking-[0.3em] text-white/70 transition hover:border-[var(--gold-500)]/60 hover:text-gold"
+          >
+            <span aria-hidden>⛶</span>
+            {isFullscreen ? "Exit Fullscreen" : "Go Fullscreen"}
+          </button>
+        </div>
+
+        {!isFullscreen && (
+          <p className="max-w-sm text-[10px] text-white/30 sm:text-xs">
+            For projector use, tap "Go Fullscreen" first — it hides the
+            browser bar and keeps the audience's eyes on the screen.
+          </p>
+        )}
 
         <p className="text-[10px] uppercase tracking-[0.35em] text-white/30 sm:text-xs sm:tracking-[0.4em]">
           {CATEGORIES.length} Categories · {CATEGORIES.reduce((s, c) => s + c.totalVotes, 0).toLocaleString()} Votes Cast
@@ -879,11 +962,13 @@ function CeremonyChrome({
   total,
   stage,
   onExit,
+  isFullscreen,
 }: {
   catIndex: number;
   total: number;
   stage: Stage;
   onExit: () => void;
+  isFullscreen: boolean;
 }) {
   if (stage === "welcome") return null;
   return (
@@ -918,12 +1003,17 @@ function CeremonyChrome({
         ))}
       </div>
 
-      <button
-        onClick={onExit}
-        className="pointer-events-auto shrink-0 rounded-full border border-white/10 px-3 py-1.5 text-[9px] uppercase tracking-[0.2em] text-white/50 transition hover:border-[var(--gold-500)]/60 hover:text-gold sm:px-4 sm:text-[10px] sm:tracking-[0.3em]"
-      >
-        Exit
-      </button>
+      {/* Hidden once in real Fullscreen mode so the audience never sees an
+          exit control during a projected session — still available in a
+          normal browser window (e.g. while testing). */}
+      {!isFullscreen && (
+        <button
+          onClick={onExit}
+          className="pointer-events-auto shrink-0 rounded-full border border-white/10 px-3 py-1.5 text-[9px] uppercase tracking-[0.2em] text-white/50 transition hover:border-[var(--gold-500)]/60 hover:text-gold sm:px-4 sm:text-[10px] sm:tracking-[0.3em]"
+        >
+          Exit
+        </button>
+      )}
     </div>
   );
 }
@@ -1008,6 +1098,8 @@ function Index() {
   const [catIndex, setCatIndex] = useState(0);
   const [stage, setStage] = useState<Stage>("welcome");
   const [finale, setFinale] = useState(false);
+  const { isFullscreen } = useFullscreen();
+  const cursorIdle = useIdleCursor(3000);
   const safeIndex = Math.min(catIndex, Math.max(0, CATEGORIES.length - 1));
   const category = CATEGORIES[safeIndex];
 
@@ -1080,12 +1172,18 @@ function Index() {
   if (finale) return <FinaleScreen onRestart={goWelcome} />;
 
   return (
-    <div className="font-body min-h-screen bg-[var(--navy-950)] text-white">
+    <div
+      className={
+        "font-body min-h-screen bg-[var(--navy-950)] text-white" +
+        (cursorIdle ? " cursor-none" : "")
+      }
+    >
       <CeremonyChrome
         catIndex={catIndex}
         total={CATEGORIES.length}
         stage={stage}
         onExit={goWelcome}
+        isFullscreen={isFullscreen}
       />
 
       {stage === "welcome" && (
